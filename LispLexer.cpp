@@ -27,7 +27,7 @@
 #include <QtDebug>
 using namespace Lisp;
 
-static QHash<QByteArray,QByteArray> d_symbols;
+static QHash<QByteArray,QByteArray> s_symbols;
 
 bool Token::isValid() const
 {
@@ -77,21 +77,36 @@ QByteArray Token::getSymbol(const QByteArray& str)
 {
     if( str.isEmpty() )
         return str;
-    QByteArray& sym = d_symbols[str];
+    QByteArray& sym = s_symbols[str];
     if( sym.isEmpty() )
         sym = str;
     return sym;
 }
 
+QStringList Token::getAllSymbols()
+{
+    QHash<QByteArray,QByteArray>::const_iterator i;
+    QStringList res;
+    for( i = s_symbols.begin(); i != s_symbols.end(); ++i )
+        res.append( QString::fromUtf8(i.key()) );
+    res.sort(Qt::CaseInsensitive);
+    return res;
+}
+
 char Lexer::readc()
 {
+    static char last = 0;
     char res;
     if( in && !in->atEnd() && in->getChar(&res) )
     {
         if( res == '\r' )
-            res = '\n';
+            res = '\n'; // immediatedly convert to \n
         else if( res == 0 || (!isprint(res) && !isspace(res)) )
+        {
+            if( last == '%' )
+                return ' '; // TODO: we need another solution, maybe (CHARACTER res); TODO: sync with Navigator::decode
             return readc(); // ignore all clutter
+        }
         if( res == '\n' )
         {
             pos.row++;
@@ -101,6 +116,7 @@ char Lexer::readc()
         if( res == 0 )
             res = -1;
         Q_ASSERT(isspace(res) || isprint(res));
+        last = res;
         return res;
     }else
     {
@@ -119,8 +135,10 @@ void Lexer::ungetc(char c)
         return;
     Q_ASSERT(isspace(c) || isprint(c));
 
-    if( in && c && !isspace(c) ) // don't unget whitespace
+    if( in && c )
     {
+        if( c == '\n' )
+            c = ' ';
         pos.col--;
         in->ungetChar(c);
     }
@@ -132,7 +150,7 @@ void Lexer::ungetstr(const QByteArray& str)
         ungetc(str[i]);
 }
 
-Lexer::Lexer(QObject* parent):QObject(parent),in(0),emitComments(false),packed(true)
+Lexer::Lexer(QObject* parent):QObject(parent),in(0),emitComments(false),packed(true),inQuote(false)
 {
 
 }
@@ -260,6 +278,16 @@ QList<Token> Lexer::tokens(const QByteArray& code, const QString& path)
         t = nextToken();
     }
     return res;
+}
+
+void Lexer::startQuote()
+{
+    inQuote = true;
+}
+
+void Lexer::endQuote()
+{
+    inQuote = false;
 }
 
 Token Lexer::token(TokenType tt, int len, const QByteArray& val)
@@ -410,7 +438,7 @@ Token Lexer::atom()
     while( true )
     {
         char c = readc();
-        if( c == '%' )
+        if( !inQuote && c == '%' )
         {
             extra++;
             c = readc(); // escape

@@ -29,6 +29,8 @@ class QLabel;
 class QTreeWidgetItem;
 class CodeEditor;
 class QPlainTextEdit;
+class QListWidget;
+class QListWidgetItem;
 
 class Navigator : public QMainWindow
 {
@@ -48,6 +50,9 @@ protected slots:
     void onXrefDblClicked();
     void onCursor();
     void onUpdateLocation(int line, int col);
+    void onSearchAtom();
+    void onSelectAtom();
+    void onAtomDblClicked(QListWidgetItem*);
 
 protected:
     struct Location
@@ -69,6 +74,7 @@ protected:
     void createSourceTree();
     void createXref();
     void createLog();
+    void createAtomList();
     void closeEvent(QCloseEvent* event);
     void fillXref();
     void fillXrefForAtom(const char* atom, const Lisp::RowCol& rc);
@@ -81,6 +87,7 @@ private:
     QLabel* d_xrefTitle;
     QTreeWidget* d_xref;
     QPlainTextEdit* d_msgLog;
+    QListWidget* atomList;
     class Viewer;
     Viewer* viewer;
     QString root;

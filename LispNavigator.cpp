@@ -40,6 +40,9 @@
 #include <QtDebug>
 #include <QSettings>
 #include <QDesktopWidget>
+#include <QShortcut>
+#include <QInputDialog>
+#include <QListWidget>
 
 static Navigator* s_this = 0;
 static void report(QtMsgType type, const QString& message )
@@ -311,6 +314,7 @@ Navigator::Navigator(QWidget *parent)
     createSourceTree();
     createXref();
     createLog();
+    createAtomList();
 
     s_this = this;
     s_oldHandler = qInstallMessageHandler(messageHander);
@@ -330,6 +334,8 @@ Navigator::Navigator(QWidget *parent)
 
     new Gui::AutoShortcut( tr("ALT+Left"), this, this, SLOT(handleGoBack()) );
     new Gui::AutoShortcut( tr("ALT+Right"), this, this, SLOT(handleGoForward()) );
+    new QShortcut(tr("CTRL+SHIFT+F"),this,SLOT(onSearchAtom()));
+    new QShortcut(tr("CTRL+SHIFT+A"),this,SLOT(onSelectAtom()));
 
 }
 
@@ -361,6 +367,8 @@ static QByteArray decode(const QByteArray& source)
             bytes += "↑";
         else if( isprint(ch) || isspace(ch) )
             bytes += ch;
+        else if( !bytes.isEmpty() && bytes[bytes.size()-1] == '%' )
+            bytes += ' ';
     }
     return bytes;
 }
@@ -426,6 +434,7 @@ void Navigator::load(const QString& path)
     viewer->clear();
     asts.clear();
     xref.clear();
+    atomList->clear();
     root = path;
     QStringList files = collectFiles(path);
     QMap<QString,QTreeWidgetItem*> dirs;
@@ -454,6 +463,7 @@ void Navigator::load(const QString& path)
         item->setText(0, debang(info.baseName()) );
         item->setIcon(0, fip.icon(QFileIconProvider::File));
         item->setData(0,Qt::UserRole, f);
+        item->setToolTip(0,f);
 
         QFile in(f);
         if( !in.open(QFile::ReadOnly) )
@@ -466,7 +476,8 @@ void Navigator::load(const QString& path)
         if( !r.read(&in, f) )
         {
             qCritical() << "ERROR " << info.baseName() << r.getPos().row << r.getError();
-        }else
+        }
+        // else
         {
             Lisp::Reader::Object ast = r.getAst();
             asts.insert(f, ast);
@@ -483,8 +494,16 @@ void Navigator::load(const QString& path)
                 ast.print(out);
             }
 #endif
+#if 0
+            QFile file(f + ".lisp");
+            if( file.open(QFile::WriteOnly) )
+            {
+                in.reset();
+                QByteArray code = decode(in.readAll());
+                file.write( code );
+            }
+#endif
         }
-        //return; // TEST
 
 #if 0
         Lisp::Lexer lex;
@@ -499,6 +518,8 @@ void Navigator::load(const QString& path)
             qCritical() << t.getName() << t.pos.row << t.pos.col << t.val;
 #endif
     }
+
+    atomList->addItems(Lisp::Token::getAllSymbols());
 }
 
 void Navigator::logMessage(const QString& str)
@@ -558,6 +579,31 @@ void Navigator::onUpdateLocation(int line, int col)
         return;
     viewer->clearBackHisto();
     pushLocation(Location(viewer->getPath(), line,col,viewer->verticalScrollBar()->value()));
+}
+
+void Navigator::onSearchAtom()
+{
+    const QString pname = QInputDialog::getText(this, "Search Atom", "Enter an atom pname (case sensitive)");
+    if( pname.isEmpty() )
+        return;
+    const char* atom = Lisp::Token::getSymbol(pname.toUtf8());
+    fillXrefForAtom(atom, Lisp::RowCol());
+}
+
+void Navigator::onSelectAtom()
+{
+    const QString pname = QInputDialog::getItem(this, "Select Atom", "Select an atom from the list:",
+                                                Lisp::Token::getAllSymbols() );
+    if( pname.isEmpty() )
+        return;
+    const char* atom = Lisp::Token::getSymbol(pname.toUtf8());
+    fillXrefForAtom(atom, Lisp::RowCol());
+}
+
+void Navigator::onAtomDblClicked(QListWidgetItem* item)
+{
+    const char* atom = Lisp::Token::getSymbol(item->text().toUtf8());
+    fillXrefForAtom(atom, Lisp::RowCol());
 }
 
 void Navigator::pushLocation(const Navigator::Location& loc)
@@ -643,7 +689,7 @@ void Navigator::createXref()
     d_xref->setRootIsDecorated(false);
     vbox->addWidget(d_xref);
     dock->setWidget(pane);
-    addDockWidget( Qt::LeftDockWidgetArea, dock );
+    addDockWidget( Qt::RightDockWidgetArea, dock );
     connect(d_xref, SIGNAL(itemDoubleClicked(QTreeWidgetItem*,int)), this, SLOT(onXrefDblClicked()) );
 }
 
@@ -659,6 +705,20 @@ void Navigator::createLog()
     dock->setWidget(d_msgLog);
     addDockWidget( Qt::BottomDockWidgetArea, dock );
     new QShortcut(tr("ESC"), dock, SLOT(close()) );
+}
+
+void Navigator::createAtomList()
+{
+    QDockWidget* dock = new QDockWidget( tr("Atoms"), this );
+    dock->setObjectName("AtomList");
+    dock->setAllowedAreas( Qt::AllDockWidgetAreas );
+    dock->setFeatures( QDockWidget::DockWidgetMovable );
+    atomList = new QListWidget(dock);
+    atomList->setAlternatingRowColors(true);
+    atomList->setSortingEnabled(false);
+    dock->setWidget(atomList);
+    addDockWidget( Qt::LeftDockWidgetArea, dock );
+    connect( atomList,SIGNAL(itemDoubleClicked(QListWidgetItem*)),this,SLOT(onAtomDblClicked(QListWidgetItem*)));
 }
 
 void Navigator::closeEvent(QCloseEvent* event)
@@ -730,7 +790,7 @@ void Navigator::fillXrefForAtom(const char* atom, const Lisp::RowCol& rc)
     QFont f = d_xref->font();
     f.setBold(true);
 
-    d_xrefTitle->setText(atom);
+    d_xrefTitle->setText(tr("Atom: %1").arg(atom));
     const QString curMod = viewer->getPath();
 
     QTreeWidgetItem* black = 0;
@@ -821,7 +881,7 @@ int main(int argc, char *argv[])
     a.setOrganizationName("me@rochus-keller.ch");
     a.setOrganizationDomain("github.com/rochus-keller/Interlisp");
     a.setApplicationName("InterlispNavigator");
-    a.setApplicationVersion("0.2.0");
+    a.setApplicationVersion("0.2.1");
     a.setStyle("Fusion");
     Navigator w;
     if( a.arguments().size() > 1 )

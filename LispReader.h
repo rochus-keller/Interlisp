@@ -136,7 +136,7 @@ public:
     const Xref& getXref() const { return xref; }
 
 private:
-    Object next(Lexer&, List* outer);
+    Object next(Lexer&, List* outer, bool inQuote);
     Object list(Lexer& in, bool brack, List* outer);
     void report(const Token&);
     void report(const Token&, const QString&);
@@ -147,6 +147,7 @@ private:
     const char* STOP;
     const char* NIL;
     const char* DEFINEQ;
+    const char* QUOTE;
     Xref xref;
 };
 

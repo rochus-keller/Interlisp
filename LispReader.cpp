@@ -40,6 +40,7 @@ bool Reader::read(QIODevice* in, const QString& path)
     STOP = Token::getSymbol("STOP").constData();
     NIL = Token::getSymbol("NIL").constData();
     DEFINEQ = Token::getSymbol("DEFINEQ").constData();
+    QUOTE = Token::getSymbol("QUOTE").constData();
 
     Lexer lex;
     lex.setStream(in, path);
@@ -48,7 +49,7 @@ bool Reader::read(QIODevice* in, const QString& path)
     {
         const Token t = lex.nextToken();
         lex.unget(t);
-        Object res = next(lex, l);
+        Object res = next(lex, l, false);
         if( !error.isEmpty() )
             return false;
         if( res.type() != Object::Nil_ )
@@ -69,10 +70,14 @@ bool Reader::read(QIODevice* in, const QString& path)
     return error.isEmpty();
 }
 
-Reader::Object Reader::next(Lexer& in, List* outer)
+Reader::Object Reader::next(Lexer& in, List* outer, bool inQuote)
 {
     Object res;
+    if( inQuote )
+        in.startQuote();
     Token t = in.nextToken();
+    if( inQuote )
+        in.endQuote();
     if( t.isEof() )
         return Object();
     pos = t.pos;
@@ -119,6 +124,7 @@ Reader::Object Reader::list(Lexer& in, bool brack, List* outer)
     List* l = new List();
     l->outer = outer;
     Object res(l);
+    bool quoteList = false;
 
     while( true )
     {
@@ -126,52 +132,40 @@ Reader::Object Reader::list(Lexer& in, bool brack, List* outer)
         if( !t.isValid() )
         {
             report(t);
-            return Object();
+            res = Object();
+            break;
         }
         if( t.type == Tok_rpar )
         {
-#if 1
             l->end = t.pos;
             if( brack )
             {
                 report(t,"terminating '[' by ')'");
-                return Object();
-            }else
-                return res;
-#else
-        while( t.type == Tok_rpar )
-        {
-            if( !brack )
-                return res;
-            // this code is never run in the correct part of Fugue.2
-            t = in.nextToken();
-            if( !t.isValid() )
-            {
-                report(t);
-                return Object();
+                res = Object();
             }
-            if( t.type != Tok_rpar && t.type != Tok_rbrack )
-            {
-                report(t,"invalid list");
-                return Object();
-            }
-#endif
+            break;
         }
         if( t.type == Tok_rbrack )
         {
             if( !brack )
                 in.unget(t); // shortcut to close all '(' lists up to '['
             l->end = t.pos;
-            return res;
+            break;
         }
         in.unget(t);
-        Object res = next(in, l);
+        Object res = next(in, l, quoteList);
         if( !error.isEmpty() )
-            return Object();
+        {
+            res = Object();
+            break;
+        }
         l->list.append(res);
         l->elementPositions.append(t.pos);
         if( res.type() == Object::Atom )
         {
+            if( l->list.size() == 1 && res.getAtom() == QUOTE )
+                quoteList = true;
+
             // TODO analyze
             Ref::Role r = Ref::Use;
             if( l->list.size() == 1 )
@@ -184,8 +178,7 @@ Reader::Object Reader::list(Lexer& in, bool brack, List* outer)
             xref[res.getAtom()] << Ref(t.pos, t.len, r);
         }
     }
-    Q_ASSERT(false);
-    return Object();
+    return res;
 }
 
 void Reader::report(const Token& t)

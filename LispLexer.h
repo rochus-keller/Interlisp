@@ -69,6 +69,7 @@ struct Token
     const char* getString() const;
 
     static QByteArray getSymbol( const QByteArray& );
+    static QStringList getAllSymbols();
 };
 
 class Lexer : public QObject
@@ -87,6 +88,8 @@ public:
     void setEmitComments(bool on) { emitComments = on; }
     void setPacked(bool on) { packed = on; }
     RowCol getPos() const { return pos; }
+    void startQuote();
+    void endQuote();
 
     static bool atom_delimiter(char);
 
@@ -109,6 +112,7 @@ private:
     QList<Token> buffer;
     bool emitComments;
     bool packed;
+    bool inQuote;
 };
 
 }
