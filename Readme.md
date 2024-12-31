@@ -20,10 +20,11 @@ NOTE that this project is work in progress.
 The following precompiled versions are available at this time:
 
 - [Linux x86](http://software.rochus-keller.ch/InterlispTools_linux_i386.tar.gz)
-- [Linux x86_64](http://software.rochus-keller.ch/InterlispTools_linux_x64.tar.gz)
 - [Windows x86](http://software.rochus-keller.ch/InterlispTools_win32.zip)
 
 Just download and unpack the compressed file to a directory. Start the application by double clicking on the InterlispNavigator executable. 
+
+Here is a copy of the [Fugue.2 sources](http://software.rochus-keller.ch/interlisp-fugue-2-sources.zip) for convenience.
 
 ### Build Steps
 
