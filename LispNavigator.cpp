@@ -43,6 +43,8 @@
 #include <QShortcut>
 #include <QInputDialog>
 #include <QListWidget>
+#include <QElapsedTimer>
+#include <QFileDialog>
 
 static Navigator* s_this = 0;
 static void report(QtMsgType type, const QString& message )
@@ -336,6 +338,7 @@ Navigator::Navigator(QWidget *parent)
     new Gui::AutoShortcut( tr("ALT+Right"), this, this, SLOT(handleGoForward()) );
     new QShortcut(tr("CTRL+SHIFT+F"),this,SLOT(onSearchAtom()));
     new QShortcut(tr("CTRL+SHIFT+A"),this,SLOT(onSelectAtom()));
+    new QShortcut(tr("CTRL+O"),this,SLOT(onOpen()) );
 
 }
 
@@ -429,6 +432,7 @@ static QStringList collectFiles( const QDir& dir )
 
 void Navigator::load(const QString& path)
 {
+    QDir::setCurrent(path);
     tree->clear();
     title->clear();
     viewer->clear();
@@ -436,10 +440,10 @@ void Navigator::load(const QString& path)
     xref.clear();
     atomList->clear();
     root = path;
-    QStringList files = collectFiles(path);
+    sourceFiles = collectFiles(path);
     QMap<QString,QTreeWidgetItem*> dirs;
     QFileIconProvider fip;
-    foreach( const QString& f, files)
+    foreach( const QString& f, sourceFiles)
     {
         QFileInfo info(f);
         QString prefix = info.path().mid(path.size()+1);
@@ -465,46 +469,6 @@ void Navigator::load(const QString& path)
         item->setData(0,Qt::UserRole, f);
         item->setToolTip(0,f);
 
-        QFile in(f);
-        if( !in.open(QFile::ReadOnly) )
-        {
-            qCritical() << "cannot open file for reading" << info.baseName();
-            continue;
-        }
-        Lisp::Reader r;
-        qDebug() << "*** parsing" << info.baseName();
-        if( !r.read(&in, f) )
-        {
-            qCritical() << "ERROR " << info.baseName() << r.getPos().row << r.getError();
-        }
-        // else
-        {
-            Lisp::Reader::Object ast = r.getAst();
-            asts.insert(f, ast);
-            Lisp::Reader::Xref::const_iterator i;
-            for( i = r.getXref().begin(); i != r.getXref().end(); ++i )
-                xref[i.key()][f].append(i.value() );
-            item->setData(0,Qt::UserRole+1, QVariant::fromValue(ast));
-#if 0
-            QTextStream out;
-            QFile file(f + ".dump");
-            if( file.open(QFile::WriteOnly) )
-            {
-                out.setDevice(&file);
-                ast.print(out);
-            }
-#endif
-#if 0
-            QFile file(f + ".lisp");
-            if( file.open(QFile::WriteOnly) )
-            {
-                in.reset();
-                QByteArray code = decode(in.readAll());
-                file.write( code );
-            }
-#endif
-        }
-
 #if 0
         Lisp::Lexer lex;
         lex.setStream(&in, f);
@@ -518,8 +482,7 @@ void Navigator::load(const QString& path)
             qCritical() << t.getName() << t.pos.row << t.pos.col << t.val;
 #endif
     }
-
-    atomList->addItems(Lisp::Token::getAllSymbols());
+    QTimer::singleShot(500,this,SLOT(onRunParser()));
 }
 
 void Navigator::logMessage(const QString& str)
@@ -604,6 +567,69 @@ void Navigator::onAtomDblClicked(QListWidgetItem* item)
 {
     const char* atom = Lisp::Token::getSymbol(item->text().toUtf8());
     fillXrefForAtom(atom, Lisp::RowCol());
+}
+
+void Navigator::onRunParser()
+{
+    QElapsedTimer t;
+    t.start();
+    QApplication::setOverrideCursor(Qt::WaitCursor);
+
+    foreach( const QString& f, sourceFiles)
+    {
+        QFile in(f);
+        QFileInfo info(f);
+        if( !in.open(QFile::ReadOnly) )
+        {
+            qCritical() << "cannot open file for reading" << info.baseName();
+            continue;
+        }
+        Lisp::Reader r;
+        qDebug() << "*** parsing" << info.baseName();
+        if( !r.read(&in, f) )
+        {
+            qCritical() << "ERROR " << info.baseName() << r.getPos().row << r.getError();
+        }
+        // else
+        {
+            Lisp::Reader::Object ast = r.getAst();
+            asts.insert(f, ast);
+            Lisp::Reader::Xref::const_iterator i;
+            for( i = r.getXref().begin(); i != r.getXref().end(); ++i )
+                xref[i.key()][f].append(i.value() );
+#if 0
+            QTextStream out;
+            QFile file(f + ".dump");
+            if( file.open(QFile::WriteOnly) )
+            {
+                out.setDevice(&file);
+                ast.print(out);
+            }
+#endif
+#if 0
+            QFile file(f + ".lisp");
+            if( file.open(QFile::WriteOnly) )
+            {
+                in.reset();
+                QByteArray code = decode(in.readAll());
+                file.write( code );
+            }
+#endif
+        }
+    }
+
+    QApplication::restoreOverrideCursor();
+    qDebug() << "parsed" << sourceFiles.size() << "files in" << t.elapsed() << "[ms]";
+
+    atomList->addItems(Lisp::Token::getAllSymbols());
+}
+
+void Navigator::onOpen()
+{
+    QString path = QFileDialog::getExistingDirectory(this,tr("Open Project Directory"),QDir::currentPath() );
+    if( path.isEmpty() )
+        return;
+    load(path);
 }
 
 void Navigator::pushLocation(const Navigator::Location& loc)
@@ -881,15 +907,23 @@ int main(int argc, char *argv[])
     a.setOrganizationName("me@rochus-keller.ch");
     a.setOrganizationDomain("github.com/rochus-keller/Interlisp");
     a.setApplicationName("InterlispNavigator");
-    a.setApplicationVersion("0.2.1");
+    a.setApplicationVersion("0.3.0");
     a.setStyle("Fusion");
+
+    QFontDatabase::addApplicationFont(":/fonts/DejaVuSansMono.ttf");
+#ifdef Q_OS_LINUX
+    QFontDatabase::addApplicationFont(":/fonts/NotoSans.ttf");
+    QFont af("Noto Sans",9);
+    a.setFont(af);
+#endif
+
     Navigator w;
+    w.showMaximized();
     if( a.arguments().size() > 1 )
     {
         w.load(a.arguments()[1]);
         w.setWindowTitle(QString("%1 - Interlisp Navigator %2").arg(a.arguments()[1]).arg(a.applicationVersion()));
     }
-    w.showMaximized();
 
     return a.exec();
 }

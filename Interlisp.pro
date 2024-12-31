@@ -41,3 +41,6 @@ CONFIG(debug, debug|release) {
 !win32 {
     QMAKE_CXXFLAGS += -Wno-reorder -Wno-unused-parameter -Wno-unused-function -Wno-unused-variable
 }
+
+RESOURCES += \
+    Navigator.qrc

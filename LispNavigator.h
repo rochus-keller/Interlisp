@@ -53,6 +53,8 @@ protected slots:
     void onSearchAtom();
     void onSelectAtom();
     void onAtomDblClicked(QListWidgetItem*);
+    void onRunParser();
+    void onOpen();
 
 protected:
     struct Location
@@ -87,6 +89,7 @@ private:
     QLabel* d_xrefTitle;
     QTreeWidget* d_xref;
     QPlainTextEdit* d_msgLog;
+    QStringList sourceFiles;
     QListWidget* atomList;
     class Viewer;
     Viewer* viewer;

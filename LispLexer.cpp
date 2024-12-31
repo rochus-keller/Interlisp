@@ -218,10 +218,14 @@ Token Lexer::nextTokenImp()
     }else if(  c == '+' || c == '-' || c == '.' )
     {
         const char c2 = readc();
+        const char c3 = readc();
+        ungetc(c3);
         ungetc(c2);
         ungetc(c);
         if( isdigit(c2) )
             return number();
+        else if( (c == '+' || c == '-') && c2 == '.' && isdigit(c3) )
+            return number(); // +/-.
         else
             return atom();
     }else if( c == '"' )
