@@ -99,17 +99,24 @@ public:
             str++;
         }
 
-        updateTabWidth();
+        QSettings set;
+        if( !set.contains("CodeEditor/Font") )
+        {
 #if defined(Q_OS_WIN32)
-        QFont monospace("Consolas");
+            QFont monospace("Consolas");
 #elif defined(Q_OS_MAC)
-        QFont monospace("SF Mono");
+            QFont monospace("SF Mono");
 #else
-        QFont monospace("Monospace");
+            QFont monospace("Monospace");
 #endif
-        if( !monospace.exactMatch() )
-            monospace = QFont("DejaVu Sans Mono");
-        setFont(monospace);
+            if( !monospace.exactMatch() )
+                monospace = QFont("DejaVu Sans Mono");
+            if( monospace.pointSizeF() < 10.0 )
+                monospace.setPointSizeF(10);
+            setFont(monospace);
+        }
+
+        updateTabWidth();
     }
 
     ~Viewer()
@@ -908,7 +915,7 @@ int main(int argc, char *argv[])
     a.setOrganizationName("me@rochus-keller.ch");
     a.setOrganizationDomain("github.com/rochus-keller/Interlisp");
     a.setApplicationName("InterlispNavigator");
-    a.setApplicationVersion("0.3.2");
+    a.setApplicationVersion("0.3.3");
     a.setStyle("Fusion");
 
     QFontDatabase::addApplicationFont(":/fonts/DejaVuSansMono.ttf");

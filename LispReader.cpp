@@ -27,7 +27,7 @@ using namespace Lisp;
 
 static QHash<QByteArray,QByteArray> symbols;
 
-static const quint64 signbit = 1LL << (64-1);
+static const quint64 signbit_mask = 1LL << (64-1);
 static const quint64 quiet_nan_mask = 0xfffLL << 51;
 static const quint64 pointer_type_mask = 7LL << 48;
 static const quint64 pointer_mask = (1LL << 48)-1;
@@ -288,7 +288,7 @@ void Reader::Object::set(const char* s)
     u = 0;
     ss = s; // otherwise the upper 32 bits are not initialized
     Q_ASSERT( u <= pointer_mask );
-    bits |= signbit | quiet_nan_mask | Atom_mask | u;
+    bits |= signbit_mask | quiet_nan_mask | Atom_mask | u;
 }
 
 void Reader::Object::set(Reader::String* s)
@@ -302,7 +302,7 @@ void Reader::Object::set(Reader::String* s)
     u = 0;
     ss = s;
     Q_ASSERT( u <= pointer_mask );
-    bits |= signbit | quiet_nan_mask | String_mask | u;
+    bits |= signbit_mask | quiet_nan_mask | String_mask | u;
 }
 
 Reader::String* Reader::Object::getStr() const
@@ -343,7 +343,7 @@ void Reader::Object::set(Reader::List* l)
     u = 0;
     ss = l;
     Q_ASSERT( u <= pointer_mask );
-    bits |= signbit | quiet_nan_mask | List_mask | u;
+    bits |= signbit_mask | quiet_nan_mask | List_mask | u;
 }
 
 Reader::List*Reader::Object::getList() const
@@ -368,7 +368,7 @@ Reader::Object::Type Reader::Object::type() const
 {
     if( (bits & quiet_nan_mask) != quiet_nan_mask )
         return Float;
-    else if( bits & signbit )
+    else if( bits & signbit_mask )
     {
         const quint64 tmp = pointer_type_mask & bits;
         if( tmp == Nil_mask )
@@ -397,7 +397,7 @@ void Reader::Object::nil()
         break;
     }
     bits = 0;
-    bits |= signbit | quiet_nan_mask | Nil_mask;
+    bits |= signbit_mask | quiet_nan_mask | Nil_mask;
 }
 
 void Reader::Object::dump(QTextStream& out) const
