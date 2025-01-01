@@ -908,7 +908,7 @@ int main(int argc, char *argv[])
     a.setOrganizationName("me@rochus-keller.ch");
     a.setOrganizationDomain("github.com/rochus-keller/Interlisp");
     a.setApplicationName("InterlispNavigator");
-    a.setApplicationVersion("0.3.1");
+    a.setApplicationVersion("0.3.2");
     a.setStyle("Fusion");
 
     QFontDatabase::addApplicationFont(":/fonts/DejaVuSansMono.ttf");
@@ -919,6 +919,7 @@ int main(int argc, char *argv[])
 #endif
 
     Navigator w;
+    w.setWindowTitle(QString("Interlisp Navigator %1").arg(QApplication::applicationVersion()));
     w.showMaximized();
     if( a.arguments().size() > 1 )
     {

@@ -27,6 +27,18 @@ using namespace Lisp;
 
 static QHash<QByteArray,QByteArray> symbols;
 
+static const quint64 signbit = 1LL << (64-1);
+static const quint64 quiet_nan_mask = 0xfffLL << 51;
+static const quint64 pointer_type_mask = 7LL << 48;
+static const quint64 pointer_mask = (1LL << 48)-1;
+static const quint64 int_mask = (1LL << 50) - 1;
+static const quint64 int_sign = 1LL << 50;
+static const quint64 Nil_mask = 1LL << 48;
+static const quint64 String_mask = 2LL << 48;
+static const quint64 List_mask = 3LL << 48;
+static const quint64 Atom_mask = 4LL << 48;
+
+
 Reader::Reader()
 {
 
@@ -276,7 +288,7 @@ void Reader::Object::set(const char* s)
     u = 0;
     ss = s; // otherwise the upper 32 bits are not initialized
     Q_ASSERT( u <= pointer_mask );
-    bits |= signbit | quiet_nan_mask | Atom | u;
+    bits |= signbit | quiet_nan_mask | Atom_mask | u;
 }
 
 void Reader::Object::set(Reader::String* s)
@@ -290,14 +302,13 @@ void Reader::Object::set(Reader::String* s)
     u = 0;
     ss = s;
     Q_ASSERT( u <= pointer_mask );
-    bits |= signbit | quiet_nan_mask | String_ | u;
+    bits |= signbit | quiet_nan_mask | String_mask | u;
 }
 
 Reader::String* Reader::Object::getStr() const
 {
     Q_ASSERT( type() == String_);
-    String* res = (String*)(bits & pointer_mask);
-    return res;
+    return (String*)(bits & pointer_mask);
 }
 
 const char*Reader::Object::getAtom() const
@@ -332,7 +343,7 @@ void Reader::Object::set(Reader::List* l)
     u = 0;
     ss = l;
     Q_ASSERT( u <= pointer_mask );
-    bits |= signbit | quiet_nan_mask | List_ | u;
+    bits |= signbit | quiet_nan_mask | List_mask | u;
 }
 
 Reader::List*Reader::Object::getList() const
@@ -360,8 +371,16 @@ Reader::Object::Type Reader::Object::type() const
     else if( bits & signbit )
     {
         const quint64 tmp = pointer_type_mask & bits;
-        const Type t = (Type)tmp;
-        return t;
+        if( tmp == Nil_mask )
+            return Nil_;
+        if( tmp == String_mask )
+            return String_;
+        if( tmp == List_mask )
+            return List_;
+        if( tmp == Atom_mask )
+            return Atom;
+        // else
+        Q_ASSERT( false);
     }else
         return Integer;
 }
@@ -378,7 +397,7 @@ void Reader::Object::nil()
         break;
     }
     bits = 0;
-    bits |= signbit | quiet_nan_mask | Nil_;
+    bits |= signbit | quiet_nan_mask | Nil_mask;
 }
 
 void Reader::Object::dump(QTextStream& out) const
