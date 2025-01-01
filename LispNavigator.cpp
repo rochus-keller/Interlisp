@@ -432,6 +432,7 @@ static QStringList collectFiles( const QDir& dir )
 
 void Navigator::load(const QString& path)
 {
+    setWindowTitle(QString("%1 - Interlisp Navigator %2").arg(path).arg(QApplication::applicationVersion()));
     QDir::setCurrent(path);
     tree->clear();
     title->clear();
@@ -907,7 +908,7 @@ int main(int argc, char *argv[])
     a.setOrganizationName("me@rochus-keller.ch");
     a.setOrganizationDomain("github.com/rochus-keller/Interlisp");
     a.setApplicationName("InterlispNavigator");
-    a.setApplicationVersion("0.3.0");
+    a.setApplicationVersion("0.3.1");
     a.setStyle("Fusion");
 
     QFontDatabase::addApplicationFont(":/fonts/DejaVuSansMono.ttf");
@@ -922,7 +923,6 @@ int main(int argc, char *argv[])
     if( a.arguments().size() > 1 )
     {
         w.load(a.arguments()[1]);
-        w.setWindowTitle(QString("%1 - Interlisp Navigator %2").arg(a.arguments()[1]).arg(a.applicationVersion()));
     }
 
     return a.exec();

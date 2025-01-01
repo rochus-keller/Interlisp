@@ -48,6 +48,7 @@ public:
         enum { signbit = 1LL << (64-1),
                quiet_nan_mask = 0xfffLL << 51,
                pointer_type_mask = 7LL << 48,
+               pointer_mask = (1LL << 48)-1,
                int_mask = (1LL << 50) - 1,
                int_sign = 1LL << 50 };
     public:

@@ -35,7 +35,7 @@ Reader::Reader()
 bool Reader::read(QIODevice* in, const QString& path)
 {
     List* l = new List();
-    ast = Object(l);
+    ast.set(l);
     xref.clear();
     STOP = Token::getSymbol("STOP").constData();
     NIL = Token::getSymbol("NIL").constData();
@@ -275,7 +275,7 @@ void Reader::Object::set(const char* s)
     union { const char* ss; quint64 u; };
     u = 0;
     ss = s; // otherwise the upper 32 bits are not initialized
-    Q_ASSERT( u < pointer_type_mask );
+    Q_ASSERT( u <= pointer_mask );
     bits |= signbit | quiet_nan_mask | Atom | u;
 }
 
@@ -289,21 +289,21 @@ void Reader::Object::set(Reader::String* s)
     union { String* ss; quint64 u; };
     u = 0;
     ss = s;
-    Q_ASSERT( u < pointer_type_mask );
+    Q_ASSERT( u <= pointer_mask );
     bits |= signbit | quiet_nan_mask | String_ | u;
 }
 
 Reader::String* Reader::Object::getStr() const
 {
     Q_ASSERT( type() == String_);
-    String* res = (String*)(bits & (pointer_type_mask-1));
+    String* res = (String*)(bits & pointer_mask);
     return res;
 }
 
 const char*Reader::Object::getAtom() const
 {
     Q_ASSERT( type() == Atom);
-    const char* res = (const char*)(bits & (pointer_type_mask-1));
+    const char* res = (const char*)(bits & pointer_mask);
     return res;
 }
 
@@ -331,15 +331,14 @@ void Reader::Object::set(Reader::List* l)
     union { List* ss; quint64 u; };
     u = 0;
     ss = l;
-    Q_ASSERT( u < pointer_type_mask );
+    Q_ASSERT( u <= pointer_mask );
     bits |= signbit | quiet_nan_mask | List_ | u;
 }
 
 Reader::List*Reader::Object::getList() const
 {
     Q_ASSERT( type() == List_);
-    List* res = (List*)(bits & (pointer_type_mask-1));
-    return res;
+    return (List*)(bits & pointer_mask);
 }
 
 void Reader::Object::set(double d)
