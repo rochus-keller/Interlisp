@@ -37,6 +37,16 @@ static const quint64 Nil_mask = 1LL << 48;
 static const quint64 String_mask = 2LL << 48;
 static const quint64 List_mask = 3LL << 48;
 static const quint64 Atom_mask = 4LL << 48;
+static const char* STOP;
+static const char* NIL;
+static const char* DEFINEQ;
+static const char* QUOTE;
+static const char* PUTPROPS;
+static const char* PUTPROP;
+static const char* SETQ;
+static const char* SETQQ;
+static const char* RPAQ;
+static const char* RPAQQ;
 
 
 Reader::Reader()
@@ -49,10 +59,17 @@ bool Reader::read(QIODevice* in, const QString& path)
     List* l = new List();
     ast.set(l);
     xref.clear();
+    atoms.clear();
     STOP = Token::getSymbol("STOP").constData();
     NIL = Token::getSymbol("NIL").constData();
     DEFINEQ = Token::getSymbol("DEFINEQ").constData();
     QUOTE = Token::getSymbol("QUOTE").constData();
+    PUTPROPS = Token::getSymbol("PUTPROPS").constData();
+    PUTPROP = Token::getSymbol("PUTPROP").constData();
+    SETQ = Token::getSymbol("SETQ").constData();
+    SETQQ = Token::getSymbol("SETQQ").constData();
+    RPAQ = Token::getSymbol("RPAQ").constData();
+    RPAQQ = Token::getSymbol("RPAQQ").constData();
 
     Lexer lex;
     lex.setStream(in, path);
@@ -66,7 +83,7 @@ bool Reader::read(QIODevice* in, const QString& path)
             return false;
         if( res.type() != Object::Nil_ )
         {
-            if( res.type() == Object::Atom )
+            if( res.type() == Object::Atom_ )
             {
                 const char* atom = res.getAtom();
                 if( atom == NIL || atom == STOP )
@@ -173,22 +190,37 @@ Reader::Object Reader::list(Lexer& in, bool brack, List* outer)
         }
         l->list.append(res);
         l->elementPositions.append(t.pos);
-        if( res.type() == Object::Atom )
+        if( res.type() == Object::Atom_ )
         {
             if( l->list.size() == 1 && res.getAtom() == QUOTE )
                 quoteList = true;
 
-            // TODO analyze
             Ref::Role r = Ref::Use;
             if( l->list.size() == 1 )
             {
                 r = Ref::Call;
                 Object o = l->getOuterFirst();
-                if( o.type() == Object::Atom && o.getAtom() == DEFINEQ )
+                if( o.type() == Object::Atom_ && o.getAtom() == DEFINEQ )
                     r = Ref::Decl;
+            }else if( l->list.size() == 2 &&
+                      (l->list.first().getAtom() == PUTPROP ||
+                       l->list.first().getAtom() == PUTPROPS || l->list.first().getAtom() == SETQ ||
+                       l->list.first().getAtom() == SETQQ || l->list.first().getAtom() == RPAQ ||
+                       l->list.first().getAtom() == RPAQQ ) )
+            {
+                r = Ref::Lhs;
             }
             xref[res.getAtom()] << Ref(t.pos, t.len, r);
         }
+        if( l->list.size() == 4 && (l->list[0].getAtom() == PUTPROPS || l->list[0].getAtom() == PUTPROP) )
+        {
+            //qDebug() << "Property of atom" << l->list[1].getAtom() << ":" << l->list[2].toString() << "=" << res.toString();
+            atoms[l->list[1].getAtom()].props[l->list[2].getAtom()] = res;
+        }else if( l->list.size() >= 6 && l->list.size() % 2 == 0 && l->list[0].getAtom() == PUTPROPS )
+        {
+            atoms[l->list[1].getAtom()].props[l->list[l->list.size()-2].getAtom()] = res;
+        }
+
     }
     return res;
 }
@@ -313,7 +345,8 @@ Reader::String* Reader::Object::getStr() const
 
 const char*Reader::Object::getAtom() const
 {
-    Q_ASSERT( type() == Atom);
+    if( type() != Atom_)
+        return 0;
     const char* res = (const char*)(bits & pointer_mask);
     return res;
 }
@@ -378,7 +411,7 @@ Reader::Object::Type Reader::Object::type() const
         if( tmp == List_mask )
             return List_;
         if( tmp == Atom_mask )
-            return Atom;
+            return Atom_;
         // else
         Q_ASSERT( false);
     }else
@@ -419,7 +452,7 @@ void Reader::Object::dump(QTextStream& out) const
     case List_:
         out << "List with " << getList()->list.size() << " elements";
         break;
-    case Atom:
+    case Atom_:
         out << "Atom: " << getAtom();
         break;
     default:
@@ -471,7 +504,7 @@ void Reader::Object::print(QTextStream& out, int level) const
                 out << ")";
             break;
         }
-    case Atom:
+    case Atom_:
         out << getAtom();
         break;
     default:
@@ -480,7 +513,7 @@ void Reader::Object::print(QTextStream& out, int level) const
     }
 }
 
-QByteArray Reader::Object::toString() const
+QByteArray Reader::Object::toString(bool fullList) const
 {
     switch( type() )
     {
@@ -496,10 +529,21 @@ QByteArray Reader::Object::toString() const
             List* l = getList();
             if( l->list.isEmpty() )
                 return "()";
-
-            return "( " + l->list.first().toString() + " ... " + QByteArray::number(l->list.size()) + " )";
+            if( fullList )
+            {
+                QByteArray res = "( ";
+                for( int i = 0; i < l->list.size(); i++ )
+                {
+                    if( i != 0 )
+                        res += " ";
+                    res += l->list[i].toString(true);
+                }
+                res += " )";
+                return res;
+            }else
+                return "( " + l->list.first().toString() + " ... " + QByteArray::number(l->list.size()) + " )";
         }
-    case Atom:
+    case Atom_:
         return getAtom();
     default:
         return "???";

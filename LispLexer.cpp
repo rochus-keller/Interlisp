@@ -83,13 +83,12 @@ QByteArray Token::getSymbol(const QByteArray& str)
     return sym;
 }
 
-QStringList Token::getAllSymbols()
+QByteArrayList Token::getAllSymbols()
 {
     QHash<QByteArray,QByteArray>::const_iterator i;
-    QStringList res;
+    QByteArrayList res;
     for( i = s_symbols.begin(); i != s_symbols.end(); ++i )
-        res.append( QString::fromUtf8(i.key()) );
-    res.sort(Qt::CaseInsensitive);
+        res.append( i.key() );
     return res;
 }
 
@@ -487,10 +486,13 @@ Token Lexer::string()
 Token Lexer::comment()
 {
     QByteArray str;
+    // first eat (*
     char c = readc();
     str += c;
     c = readc();
     str += c;
+
+    // now find end of comment considering included lists and strings
     int level = 0;
     bool inString = false;
     QList<int> brackets; // bracket at level

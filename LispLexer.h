@@ -69,7 +69,7 @@ struct Token
     const char* getString() const;
 
     static QByteArray getSymbol( const QByteArray& );
-    static QStringList getAllSymbols();
+    static QByteArrayList getAllSymbols();
 };
 
 class Lexer : public QObject

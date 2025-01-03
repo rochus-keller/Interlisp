@@ -52,7 +52,7 @@ public:
             Nil_,
             String_,
             List_,
-            Atom,
+            Atom_,
         };
 
         Object();
@@ -81,7 +81,7 @@ public:
         void nil();
         void dump(QTextStream& out) const;
         void print(QTextStream& out, int level = 0) const;
-        QByteArray toString() const;
+        QByteArray toString(bool fullList = false) const;
     };
 
     struct List
@@ -111,10 +111,22 @@ public:
         void release();
     };
 
+    typedef QHash<const char*,Object> Properties;
+    struct Atom
+    {
+        //const char* pname;
+        Object value;
+        // TODO: values have local scope, not so props; therefore in a PROG scope
+        // there must be a separate value entity in case of name override
+        Properties props;
+        QList<Object> vector;
+    };
+    typedef QHash<const char*,Atom> Atoms;
+
     struct Ref
     {
         RowCol pos;
-        enum Role { Use, Call, Decl };
+        enum Role { Use, Call, Decl, Lhs };
         quint8 role;
         quint16 len;
         Ref(const RowCol& rc = RowCol(), quint16 l = 0, Role r = Use):pos(rc),role(r),len(l){}
@@ -129,6 +141,7 @@ public:
     const RowCol& getPos() const { return pos; }
     const Object& getAst() const { return ast; }
     const Xref& getXref() const { return xref; }
+    const Atoms& getAtoms() const { return atoms; }
 
 private:
     Object next(Lexer&, List* outer, bool inQuote);
@@ -139,11 +152,8 @@ private:
     Object ast;
     QString error;
     RowCol pos;
-    const char* STOP;
-    const char* NIL;
-    const char* DEFINEQ;
-    const char* QUOTE;
     Xref xref;
+    Atoms atoms;
 };
 
 }

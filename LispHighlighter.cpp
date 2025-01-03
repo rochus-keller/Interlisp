@@ -149,7 +149,7 @@ void Highlighter::highlightBlock(const QString& text)
         }
     }else if( lexerState == 2 )
     {
-        // wir sind in einem multi line hex string
+        // wir sind in einem multi line string
         QTextCharFormat f = formatForCategory(C_Str);
         // f.setProperty( TokenProp, int(Tok_hexstring) );
         int pos = text.indexOf('"');

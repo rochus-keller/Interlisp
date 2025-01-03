@@ -261,7 +261,7 @@ public:
                         getPath(),cur.blockNumber() + 1,cur.positionInBlock() + 1);
             const bool alreadyArrow = !d_link.isEmpty();
             d_link.clear();
-            if( res.first && res.second >= 0 && res.first->list[res.second].type() == Lisp::Reader::Object::Atom)
+            if( res.first && res.second >= 0 && res.first->list[res.second].type() == Lisp::Reader::Object::Atom_)
             {
                 Q_ASSERT( res.first );
                 const int off = cur.positionInBlock() + 1 - res.first->elementPositions[res.second].col;
@@ -324,6 +324,7 @@ Navigator::Navigator(QWidget *parent)
     createXref();
     createLog();
     createAtomList();
+    createProperties();
 
     s_this = this;
     s_oldHandler = qInstallMessageHandler(messageHander);
@@ -363,7 +364,7 @@ static inline QString debang( const QString& str )
         return str.left(pos);
 }
 
-static QByteArray decode(const QByteArray& source)
+static QString decode(const QByteArray& source)
 {
     QByteArray bytes;
     for( int i = 0; i < source.size(); i++ )
@@ -380,7 +381,7 @@ static QByteArray decode(const QByteArray& source)
         else if( !bytes.isEmpty() && bytes[bytes.size()-1] == '%' )
             bytes += ' ';
     }
-    return bytes;
+    return QString::fromUtf8(bytes);
 }
 
 static QStringList collectFiles( const QDir& dir )
@@ -415,7 +416,7 @@ static QStringList collectFiles( const QDir& dir )
             QFile f(dir.absoluteFilePath(a));
             if( f.open(QIODevice::ReadOnly) )
             {
-                const QByteArray header = decode(f.read(20));
+                const QString header = decode(f.read(20));
                 if( header.startsWith("(FILECREATED") )
                     res.append(f.fileName());
                 else
@@ -446,6 +447,7 @@ void Navigator::load(const QString& path)
     viewer->clear();
     asts.clear();
     xref.clear();
+    atoms.clear();
     atomList->clear();
     root = path;
     sourceFiles = collectFiles(path);
@@ -503,7 +505,10 @@ void Navigator::fileDoubleClicked(QTreeWidgetItem* item, int)
 {
     if( item->type() )
         return;
-    showFile(item->data(0, Qt::UserRole).toString());
+    if( QApplication::keyboardModifiers() == Qt::ControlModifier )
+        openGenerated(item->data(0, Qt::UserRole).toString());
+    else
+        showFile(item->data(0, Qt::UserRole).toString());
 }
 
 void Navigator::handleGoBack()
@@ -541,7 +546,33 @@ void Navigator::onXrefDblClicked()
 
 void Navigator::onCursor()
 {
-    fillXref();
+    int line, col;
+    viewer->getCursorPosition( &line, &col );
+    line += 1;
+    col += 1;
+
+    QPair<Lisp::Reader::List*,int> res = findSymbolBySourcePos(viewer->getPath(), line, col);
+    if( res.first )
+    {
+        viewer->d_list = res.first;
+        if( res.second >= 0 && res.first->list[res.second].type() == Lisp::Reader::Object::Atom_ )
+        {
+            const char* atom = res.first->list[res.second].getAtom();
+            Lisp::RowCol rc;
+            if( res.second < res.first->elementPositions.size() )
+                rc = res.first->elementPositions[res.second];
+            syncSelectedAtom(atom,rc);
+        }else
+        {
+            d_xrefTitle->clear();
+            d_xref->clear();
+            viewer->updateExtraSelections();
+        }
+    }else
+    {
+        viewer->d_list = 0;
+        viewer->markNonTerms(Lisp::Reader::Refs());
+    }
 }
 
 void Navigator::onUpdateLocation(int line, int col)
@@ -558,23 +589,27 @@ void Navigator::onSearchAtom()
     if( pname.isEmpty() )
         return;
     const char* atom = Lisp::Token::getSymbol(pname.toUtf8());
-    fillXrefForAtom(atom, Lisp::RowCol());
+    syncSelectedAtom(atom, Lisp::RowCol());
 }
 
 void Navigator::onSelectAtom()
 {
-    const QString pname = QInputDialog::getItem(this, "Select Atom", "Select an atom from the list:",
-                                                Lisp::Token::getAllSymbols() );
+    QStringList l;
+    QByteArrayList raw = Lisp::Token::getAllSymbols();
+    foreach( const QByteArray& a, raw)
+        l << decode(a);
+    l.sort(Qt::CaseInsensitive);
+    const QString pname = QInputDialog::getItem(this, "Select Atom", "Select an atom from the list:", l );
     if( pname.isEmpty() )
         return;
     const char* atom = Lisp::Token::getSymbol(pname.toUtf8());
-    fillXrefForAtom(atom, Lisp::RowCol());
+    syncSelectedAtom(atom, Lisp::RowCol());
 }
 
 void Navigator::onAtomDblClicked(QListWidgetItem* item)
 {
-    const char* atom = Lisp::Token::getSymbol(item->text().toUtf8());
-    fillXrefForAtom(atom, Lisp::RowCol());
+    const char* atom = item->data(Qt::UserRole).toByteArray().constData();
+    syncSelectedAtom(atom, Lisp::RowCol());
 }
 
 void Navigator::onRunParser()
@@ -602,9 +637,23 @@ void Navigator::onRunParser()
         {
             Lisp::Reader::Object ast = r.getAst();
             asts.insert(f, ast);
+
             Lisp::Reader::Xref::const_iterator i;
             for( i = r.getXref().begin(); i != r.getXref().end(); ++i )
                 xref[i.key()][f].append(i.value() );
+
+            Lisp::Reader::Atoms::const_iterator j;
+            for( j = r.getAtoms().begin(); j != r.getAtoms().end(); ++j )
+            {
+                Lisp::Reader::Atom& a = atoms[j.key()];
+                a.props.unite(j.value().props);
+#if 0
+                qDebug() << "**** atom" << j.key() << "properties";
+                for( Lisp::Reader::Properties::const_iterator k = a.props.begin(); k != a.props.end(); ++k )
+                    qDebug() << "  " << k.key() << "=" << k.value().toString();
+#endif
+            }
+
 #if 0
             QTextStream out;
             QFile file(f + ".dump");
@@ -629,7 +678,7 @@ void Navigator::onRunParser()
     QApplication::restoreOverrideCursor();
     qDebug() << "parsed" << sourceFiles.size() << "files in" << t.elapsed() << "[ms]";
 
-    atomList->addItems(Lisp::Token::getAllSymbols());
+    fillAtomList();
 }
 
 void Navigator::onOpen()
@@ -638,6 +687,11 @@ void Navigator::onOpen()
     if( path.isEmpty() )
         return;
     load(path);
+}
+
+void Navigator::onPropertiesDblClicked(QTreeWidgetItem* item, int)
+{
+    syncSelectedAtom(item->data(0, Qt::UserRole).toByteArray().constData(), Lisp::RowCol());
 }
 
 void Navigator::pushLocation(const Navigator::Location& loc)
@@ -660,7 +714,7 @@ void Navigator::showFile(const QString& file)
         return;
     }
     title->setText(debang(f.fileName().mid(root.size()+1)));
-    const QString text = QString::fromUtf8(decode(f.readAll()));
+    const QString text = decode(f.readAll());
     viewer->loadFromString(text, file);
 }
 
@@ -669,6 +723,20 @@ void Navigator::showFile(const QString& file, const Lisp::RowCol& pos)
     showFile(file);
     if( !file.isEmpty() )
         showPosition(pos);
+}
+
+void Navigator::openGenerated(const QString& file)
+{
+    Navigator::Viewer* v = new Navigator::Viewer(0);
+    v->d_ide = this;
+    v->setAttribute(Qt::WA_DeleteOnClose);
+    Lisp::Reader::Object obj = asts.value(file);
+    QString code;
+    QTextStream out(&code);
+    obj.print(out);
+    v->setWindowTitle(tr("%1 - Generated").arg(file));
+    v->loadFromString(code,file);
+    v->showMaximized();
 }
 
 void Navigator::showPosition(const Lisp::RowCol& pos)
@@ -755,46 +823,37 @@ void Navigator::createAtomList()
     connect( atomList,SIGNAL(itemDoubleClicked(QListWidgetItem*)),this,SLOT(onAtomDblClicked(QListWidgetItem*)));
 }
 
+void Navigator::createProperties()
+{
+    QDockWidget* dock = new QDockWidget( tr("Properties"), this );
+    dock->setObjectName("Properties");
+    dock->setAllowedAreas( Qt::AllDockWidgetAreas );
+    dock->setFeatures( QDockWidget::DockWidgetMovable );
+    QWidget* pane = new QWidget(dock);
+    QVBoxLayout* vbox = new QVBoxLayout(pane);
+    vbox->setMargin(0);
+    vbox->setSpacing(0);
+    propTitle = new QLabel(pane);
+    propTitle->setMargin(2);
+    propTitle->setWordWrap(true);
+    vbox->addWidget(propTitle);
+    properties = new QTreeWidget(pane);
+    properties->setAlternatingRowColors(true);
+    properties->setHeaderLabels(QStringList() << "Key" << "Value");
+    properties->setAllColumnsShowFocus(true);
+    properties->setRootIsDecorated(false);
+    properties->setColumnCount(2); // Name, Value
+    vbox->addWidget(properties);
+    dock->setWidget(pane);
+    addDockWidget( Qt::LeftDockWidgetArea, dock );
+    connect(properties, SIGNAL(itemDoubleClicked(QTreeWidgetItem*,int)), this, SLOT(onPropertiesDblClicked(QTreeWidgetItem*,int)) );
+}
+
 void Navigator::closeEvent(QCloseEvent* event)
 {
     QSettings s;
     s.setValue( "DockState", saveState() );
     event->setAccepted(true);
-}
-
-void Navigator::fillXref()
-{
-    int line, col;
-    viewer->getCursorPosition( &line, &col );
-    line += 1;
-    col += 1;
-
-    QPair<Lisp::Reader::List*,int> res = findSymbolBySourcePos(viewer->getPath(), line, col);
-    if( res.first )
-    {
-        viewer->d_list = res.first;
-        if( res.second >= 0 && res.first->list[res.second].type() == Lisp::Reader::Object::Atom )
-        {
-            const char* atom = res.first->list[res.second].getAtom();
-            Lisp::RowCol rc;
-            if( res.second < res.first->elementPositions.size() )
-                rc = res.first->elementPositions[res.second];
-            fillXrefForAtom(atom, rc);
-            //TODO syncModView(hit->decl);
-
-            QHash<QString,Lisp::Reader::Refs> usage = xref.value(atom);
-            viewer->markNonTerms(usage.value(viewer->getPath()));
-        }else
-        {
-            d_xrefTitle->clear();
-            d_xref->clear();
-            viewer->updateExtraSelections();
-        }
-    }else
-    {
-        viewer->d_list = 0;
-        viewer->markNonTerms(Lisp::Reader::Refs());
-    }
 }
 
 static bool sortExList( const Lisp::Reader::Ref& lhs, const Lisp::Reader::Ref& rhs )
@@ -810,6 +869,8 @@ static inline QString roleToStr(quint8 r)
         return "call";
     case Lisp::Reader::Ref::Decl:
         return "decl";
+    case Lisp::Reader::Ref::Lhs:
+        return "lhs";
     default:
         return "";
     }
@@ -824,7 +885,7 @@ void Navigator::fillXrefForAtom(const char* atom, const Lisp::RowCol& rc)
     QFont f = d_xref->font();
     f.setBold(true);
 
-    d_xrefTitle->setText(tr("Atom: %1").arg(atom));
+    d_xrefTitle->setText(tr("Atom %1").arg(decode(atom)));
     const QString curMod = viewer->getPath();
 
     QTreeWidgetItem* black = 0;
@@ -860,6 +921,56 @@ void Navigator::fillXrefForAtom(const char* atom, const Lisp::RowCol& rc)
     }
 }
 
+static inline QByteArray toBa(const char* str)
+{
+    return QByteArray::fromRawData(str, strlen(str));
+}
+
+void Navigator::fillProperties(const char* atom)
+{
+    properties->clear();
+    propTitle->setText(tr("Atom %1").arg(decode(atom)));
+    Lisp::Reader::Atoms::const_iterator i = atoms.find(atom);
+    if( i != atoms.end() )
+    {
+        Lisp::Reader::Properties::const_iterator j;
+        for(j = i.value().props.begin(); j != i.value().props.end(); ++j )
+        {
+            QTreeWidgetItem* item = new QTreeWidgetItem(properties);
+            item->setText(0, decode(j.key()));
+            item->setData(0, Qt::UserRole, QVariant::fromValue(toBa(j.key())));
+            const QString str = decode(j.value().toString(true));
+            item->setText(1, str);
+            item->setToolTip(1, str);
+        }
+    }
+    properties->sortByColumn(0);
+}
+
+void Navigator::fillAtomList()
+{
+    atomList->clear();
+    QByteArrayList raw = Lisp::Token::getAllSymbols();
+    foreach( const QByteArray& a, raw)
+    {
+        QListWidgetItem* item = new QListWidgetItem(atomList);
+        item->setText(decode(a));
+        item->setData(Qt::UserRole, QVariant::fromValue(a));
+    }
+    atomList->sortItems();
+}
+
+void Navigator::syncSelectedAtom(const char* atom, const Lisp::RowCol& rc)
+{
+    fillXrefForAtom(atom, rc);
+    //TODO syncModView(hit->decl);
+
+    QHash<QString,Lisp::Reader::Refs> usage = xref.value(atom);
+    viewer->markNonTerms(usage.value(viewer->getPath()));
+
+    fillProperties(atom);
+}
+
 QPair<Lisp::Reader::List*, int> Navigator::findSymbolBySourcePos(const QString& file, quint32 line, quint16 col)
 {
     Lisp::Reader::Object obj = asts.value(file);
@@ -889,7 +1000,7 @@ QPair<Lisp::Reader::List*, int> Navigator::findSymbolBySourcePos(Lisp::Reader::L
         case Lisp::Reader::Object::String_:
             // we're not interested in these objects
             break;
-        case Lisp::Reader::Object::Atom:
+        case Lisp::Reader::Object::Atom_:
             if( line == r.row && col >= r.col && col <= r.col + l->list[i].getAtomLen(true) )
                 return qMakePair(l,i);
             break;
@@ -915,7 +1026,7 @@ int main(int argc, char *argv[])
     a.setOrganizationName("me@rochus-keller.ch");
     a.setOrganizationDomain("github.com/rochus-keller/Interlisp");
     a.setApplicationName("InterlispNavigator");
-    a.setApplicationVersion("0.3.3");
+    a.setApplicationVersion("0.3.4");
     a.setStyle("Fusion");
 
     QFontDatabase::addApplicationFont(":/fonts/DejaVuSansMono.ttf");

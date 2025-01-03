@@ -55,6 +55,7 @@ protected slots:
     void onAtomDblClicked(QListWidgetItem*);
     void onRunParser();
     void onOpen();
+    void onPropertiesDblClicked(QTreeWidgetItem*,int);
 
 protected:
     struct Location
@@ -71,15 +72,19 @@ protected:
     void pushLocation( const Location& );
     void showFile(const QString& file);
     void showFile(const QString& file, const Lisp::RowCol& pos);
+    void openGenerated(const QString& file);
     void showPosition(const Lisp::RowCol& pos);
     void showFile(const Location& file);
     void createSourceTree();
     void createXref();
     void createLog();
     void createAtomList();
+    void createProperties();
     void closeEvent(QCloseEvent* event);
-    void fillXref();
     void fillXrefForAtom(const char* atom, const Lisp::RowCol& rc);
+    void fillProperties(const char* atom);
+    void fillAtomList();
+    void syncSelectedAtom(const char* atom, const Lisp::RowCol& rc);
     QPair<Lisp::Reader::List*,int> findSymbolBySourcePos(const QString& file, quint32 line, quint16 col);
     QPair<Lisp::Reader::List*,int> findSymbolBySourcePos(Lisp::Reader::List*, quint32 line, quint16 col);
 
@@ -88,6 +93,8 @@ private:
     QLabel* title;
     QLabel* d_xrefTitle;
     QTreeWidget* d_xref;
+    QTreeWidget* properties;
+    QLabel* propTitle;
     QPlainTextEdit* d_msgLog;
     QStringList sourceFiles;
     QListWidget* atomList;
@@ -96,6 +103,7 @@ private:
     QString root;
     QMap<QString,Lisp::Reader::Object> asts;
     QHash<const char*,QHash<QString,Lisp::Reader::Refs> > xref;
+    Lisp::Reader::Atoms atoms;
     QList<Location> d_backHisto; // d_backHisto.last() ist aktuell angezeigtes Objekt
     QList<Location> d_forwardHisto;
     bool d_pushBackLock, d_lock3;
