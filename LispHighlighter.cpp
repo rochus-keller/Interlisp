@@ -26,9 +26,14 @@
 #include <QtDebug>
 using namespace Lisp;
 
+static const char* QUOTE;
+
+
 Highlighter::Highlighter(QTextDocument* parent) :
     QSyntaxHighlighter(parent)
 {
+    QUOTE = Token::getSymbol("QUOTE").constData();
+
     const int pointSize = parent->defaultFont().pointSize();
     for( int i = 0; i < C_Max; i++ )
     {
@@ -76,6 +81,13 @@ QTextCharFormat Highlighter::formatForCategory(int c) const
     return d_format[c];
 }
 
+void Highlighter::clearFromHere(quint32 line)
+{
+    LineState::iterator i = lineState.upperBound(line);
+    while( i != lineState.end() )
+        i = lineState.erase(i);
+}
+
 #if 0
 QSet<QByteArray> Highlighter::createBuiltins(bool withLowercase)
 {
@@ -116,114 +128,97 @@ static bool punctuation(const QString& str, int pos, int len)
 void Highlighter::highlightBlock(const QString& text)
 {
     const int previousBlockState_ = previousBlockState();
-    int lexerState = 0, braceDepth = 0;
+    quint8 lexerState = 0,
+            braceDepth = 0,  // nesting level of [] or ()
+            commentLevel = 0; // 0 or braceDepth where comment started
     if (previousBlockState_ != -1) {
         lexerState = previousBlockState_ & 0xff;
         braceDepth = (previousBlockState_ >> 8) & 0xff;
+        commentLevel = (previousBlockState_ >> 16) & 0xff;
     }
 
+    const quint32 line = currentBlock().blockNumber() + 1;
+    clearFromHere(line);
 
-    int start = 0;
-    if( lexerState == 1 )
-    {
-        // wir sind in einem Multi Line Comment
-        // suche das Ende
-        QTextCharFormat f = formatForCategory(C_Cmt);
-        // f.setProperty( TokenProp, int(Tok_Comment) );
-        int pos = text.indexOf(')');
-        if( pos == -1 )
-        {
-            // the whole block ist part of the comment
-            lexerState = 1; // lexerState can have higher value if nested
-            setFormat( start, text.size(), f );
-            setCurrentBlockState( (braceDepth << 8) | lexerState);
-            return;
-        }else
-        {
-            // End of Comment found
-            pos++;
-            setFormat( start, pos , f );
-            lexerState = 0;
-            braceDepth--;
-            start = pos;
-        }
-    }else if( lexerState == 2 )
-    {
-        // wir sind in einem multi line string
-        QTextCharFormat f = formatForCategory(C_Str);
-        // f.setProperty( TokenProp, int(Tok_hexstring) );
-        int pos = text.indexOf('"');
-        if( pos == -1 )
-        {
-            // the whole block ist part of the hex string
-            setFormat( start, text.size(), f );
-            setCurrentBlockState( (braceDepth << 8) | lexerState);
-            return;
-        }else
-        {
-            // End of hex string found
-            pos++;
-            setFormat( start, pos , f );
-            lexerState = 0;
-            braceDepth--;
-            start = pos;
-        }
-    }
+    // we can be in a (, [, (*, " or QUOTE
+    // [ requires memorizing the previous open occurences
+    // ( and [ are the same category, just with different termination rules
+    // QUOTE can start with ( or [
+    // A comment can include all others and behave compatible, even if the whole thing is not evaluated
+    // But a comment can terminate with ] which affects previous [ and (
+    // The [ ( (* QUOTE state is separate from the " state
+
+    bool inString = lexerState & 1;
+    bool inQuote = lexerState & 2;
 
     Lexer lex;
     lex.setEmitComments(true);
     lex.setPacked(false);
+    lex.setStream(text.toLatin1(), "");
 
-    //QTextCharFormat bg;
-    //setBackground(bg, braceDepth);
-    //setFormat(0, text.size(), bg);
-
-    QList<Token> tokens = lex.tokens(text.mid(start));
-    for( int i = 0; i < tokens.size(); ++i )
+    Token t;
+    if( inString )
     {
-        Token &t = tokens[i];
-        t.pos.col += start;
+        t = lex.readString();
+        setFormat( 0, t.len, formatForCategory(C_Str) );
+        if( !t.val.endsWith('"') )
+        {
+            // the whole line is in the string
+            // lexer state remains the same
+            return;
+        }else
+            inString = false;
+    }
 
+    t = lex.nextToken();
+    while( t.isValid() )
+    {
         QTextCharFormat f;
-        if( t.type == Tok_comment )
+        switch(t.type)
         {
-            f = formatForCategory(C_Cmt);
-            if( !t.val.endsWith(')') )
+        case Tok_lpar:
+            braceDepth++;
+            if( commentLevel )
+                f = formatForCategory(C_Cmt);
+            else
+                f = formatForCategory(C_Op2);
+            break;
+        case Tok_rpar:
+            if( commentLevel )
             {
-                braceDepth++;
-                lexerState = 1; // multiline comment, RISK
+                if( braceDepth == commentLevel )
+                    commentLevel = 0;
+                f = formatForCategory(C_Cmt);
             }else
-                lexerState = 0;
-        }else if( t.type == Tok_string )
-        {
-            f = formatForCategory(C_Str);
-            if( t.val.size() <= 1 || !t.val.endsWith('"') )
+                f = formatForCategory(C_Op2);
+            braceDepth--;
+            break;
+        case Tok_lbrack:
+            lineState[line] = braceDepth;
+            braceDepth++;
+            if( commentLevel )
+                f = formatForCategory(C_Cmt);
+            else
+                f = formatForCategory(C_Op2);
+            break;
+        case Tok_rbrack:
+            if( commentLevel )
+                f = formatForCategory(C_Cmt);
+            else
+                f = formatForCategory(C_Op2);
+            if( !lineState.isEmpty() )
             {
-                braceDepth++;
-                lexerState = 2; // multiline string
-            }else
-                lexerState = 0;
-        }else if( t.type == Tok_float || t.type == Tok_integer )
-            f = formatForCategory(C_Num);
-        else if(t.type == Tok_lpar || t.type == Tok_lbrack )
-        {
-            if( t.type == Tok_lpar )
-                braceDepth++;
-            //setBackground(bg, braceDepth);
-            //setFormat(t.pos.col-1, text.size() - (t.pos.col-1), bg);
-            f = formatForCategory(C_Op2);
-        }else if( t.type == Tok_rpar || t.type == Tok_rbrack )
-        {
-            if( t.type == Tok_rpar )
-                braceDepth = qMax(0, braceDepth-1);
-            if( t.type == Tok_rbrack )
-                braceDepth = 1; // TODO
-            //setBackground(bg, braceDepth);
-            //setFormat(t.pos.col-1, text.size() - (t.pos.col-1), bg);
-            f = formatForCategory(C_Op2);
-        }else if( t.type == Tok_atom )
-        {
-            if( d_syntax.contains(t.val.constData()) )
+                const quint32 lastLine = lineState.lastKey();
+                braceDepth = lineState.value(lastLine);
+                lineState.remove(lastLine);
+                if( braceDepth <= commentLevel )
+                    commentLevel = 0;
+            }
+            break;
+        case Tok_atom:
+            if( commentLevel )
+                f = formatForCategory(C_Cmt);
+            else if( d_syntax.contains(t.val.constData()) )
                 f = formatForCategory(C_Op1);
             else if( d_functions.contains(t.val.constData()) )
                 f = formatForCategory(C_Func);
@@ -233,19 +228,47 @@ void Highlighter::highlightBlock(const QString& text)
             //    f = formatForCategory(C_Op3);
             else
                 f = formatForCategory(C_Ident);
+            if( !inString && commentLevel == 0 && t.val.constData() == QUOTE )
+                inQuote = true;
+            break;
+        case Tok_float:
+        case Tok_integer:
+            if( commentLevel )
+                f = formatForCategory(C_Cmt);
+            else
+                f = formatForCategory(C_Num);
+            break;
+        case Tok_Lattr:
+            braceDepth++;
+            if( commentLevel == 0 )
+                commentLevel = braceDepth;
+            f = formatForCategory(C_Cmt);
+            break;
+        case Tok_DblQuote:
+            Q_ASSERT( !inString );
+            inString = true;
+            const Token t2 = lex.readString();
+            t.len += t2.len;
+            if( t2.val.endsWith('"') )
+                inString = false; // string ended on the same line
+            // else look for string end on next line
+            if( commentLevel == 0 )
+                f = formatForCategory(C_Str);
+            else
+                f = formatForCategory(C_Cmt);
+            break;
         }
-
-        //setBackground(f, braceDepth);
-#if 0
-        if( lexerState == 3 )
-            setFormat( startPp, t.pos.col - startPp + t.len, formatForCategory(C_Pp) );
-        else
-#endif
         if( f.isValid() )
             setFormat( t.pos.col-1, t.len, f );
+        t = lex.nextToken();
     }
 
-    setCurrentBlockState((braceDepth << 8) | lexerState );
+    lexerState = 0;
+    if( inString )
+        lexerState |= 1;
+    if( inQuote )
+        lexerState |= 2;
+    setCurrentBlockState((commentLevel << 16) | (braceDepth << 8) | lexerState );
 }
 
 

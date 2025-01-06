@@ -138,9 +138,18 @@ void Lexer::ungetc(char c)
     {
         if( c == '\n' )
             c = ' ';
+        Q_ASSERT( pos.col != 0 );
         pos.col--;
         in->ungetChar(c);
     }
+}
+
+QByteArray Lexer::peek(int count)
+{
+    if( in )
+        return in->peek(count);
+    else
+        return QByteArray();
 }
 
 void Lexer::ungetstr(const QByteArray& str)
@@ -165,6 +174,15 @@ void Lexer::setStream(QIODevice* in, const QString& sourcePath)
         pos.col = 1;
         this->sourcePath = sourcePath;
     }
+}
+
+void Lexer::setStream(const QByteArray& code, const QString& sourcePath)
+{
+    QBuffer* buf = new QBuffer(this);
+    buf->setData(code);
+    buf->open(QIODevice::ReadOnly);
+    in = buf;
+    setStream( in, sourcePath );
 }
 
 bool Lexer::setStream(const QString& sourcePath)
@@ -197,6 +215,29 @@ Token Lexer::nextToken()
     return res;
 }
 
+Token Lexer::readString()
+{
+    QByteArray str;
+    int extra = 0; // count left and right quote
+    char c;
+    while( true )
+    {
+        c = readc();
+        if( c == '%' )
+        {
+            extra++;
+            c = readc(); // escape
+        }else if( c == '"' )
+        {
+            str += c;
+            break;
+        }else if( c == 0 )
+            break;
+        str += c;
+    }
+    return token(Tok_string, str.size() + extra, str);
+}
+
 void Lexer::unget(const Token& t)
 {
     buffer.push_front(t);
@@ -216,28 +257,31 @@ Token Lexer::nextTokenImp()
         return number();
     }else if(  c == '+' || c == '-' || c == '.' )
     {
-        const char c2 = readc();
-        const char c3 = readc();
-        ungetc(c3);
-        ungetc(c2);
+        const QByteArray la = peek(2);
         ungetc(c);
-        if( isdigit(c2) )
+        if( !la.isEmpty() && isdigit(la[0]) )
             return number();
-        else if( (c == '+' || c == '-') && c2 == '.' && isdigit(c3) )
+        else if( (c == '+' || c == '-') && la.size() == 2 && la[0] == '.' && isdigit(la[1]) )
             return number(); // +/-.
         else
             return atom();
     }else if( c == '"' )
     {
         // this is a string
+        if( !packed )
+            return token(Tok_DblQuote, 1);
         ungetc(c);
         return string();
     }else if( c == '(' || c == '[' || c == ')' || c == ']' )
     {
-        const char c2 = readc();
-        ungetc(c2);
-        if( c == '(' && c2 == '*' )
+        const QByteArray la = peek(1);
+        if( c == '(' && !la.isEmpty() && la[0] == '*' )
         {
+            if( !packed )
+            {
+                readc();
+                return token(Tok_Lattr, 2);
+            }
             ungetc(c);
             return comment();
         }

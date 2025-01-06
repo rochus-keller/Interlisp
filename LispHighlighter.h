@@ -24,6 +24,7 @@
 
 #include <QSyntaxHighlighter>
 #include <QSet>
+#include <QMap>
 
 namespace Lisp
 {
@@ -37,7 +38,7 @@ namespace Lisp
 
     protected:
         QTextCharFormat formatForCategory(int) const;
-        //static QSet<QByteArray> createBuiltins(bool withLowercase = false);
+        void clearFromHere(quint32 line);
 
         // overrides
         void highlightBlock(const QString &text);
@@ -46,6 +47,8 @@ namespace Lisp
         enum Category { C_Num, C_Str, C_Func, C_Var, C_Ident, C_Op1, C_Op2, C_Op3, C_Pp, C_Cmt, C_Max };
         QTextCharFormat d_format[C_Max];
         QSet<const char*> d_functions, d_variables, d_syntax;
+        typedef QMap<quint32,quint16> LineState;
+        LineState lineState; // line -> level
     };
 }
 

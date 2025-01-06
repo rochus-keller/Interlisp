@@ -41,7 +41,9 @@ enum TokenType {
     Tok_atom,
     Tok_float,
     Tok_integer,
-    Tok_comment
+    Tok_comment,
+    Tok_Lattr, // (*
+    Tok_DblQuote, // "
 };
 
 struct Token
@@ -78,9 +80,11 @@ public:
     Lexer(QObject *parent = 0);
 
     void setStream( QIODevice*, const QString& sourcePath );
+    void setStream(const QByteArray& code, const QString& sourcePath );
     bool setStream(const QString& sourcePath);
 
     Token nextToken();
+    Token readString();
     void unget(const Token&);
     QList<Token> tokens( const QString& code );
     QList<Token> tokens( const QByteArray& code, const QString& path = QString() );
@@ -97,6 +101,7 @@ protected:
     Token nextTokenImp();
     char readc();
     void ungetc(char c);
+    QByteArray peek(int count);
     void ungetstr(const QByteArray& str);
     Token token(TokenType tt, int len = 0, const QByteArray &val = QByteArray());
     Token number();
