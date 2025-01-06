@@ -161,13 +161,15 @@ void Highlighter::highlightBlock(const QString& text)
     {
         t = lex.readString();
         setFormat( 0, t.len, formatForCategory(C_Str) );
-        if( !t.val.endsWith('"') )
+        if( t.val.endsWith('"') && ((t.pos.col + t.len) < 2 || text[t.pos.col + t.len - 2] != '%') ) // ": -1, %: -2
+            inString = false;
+        else
         {
             // the whole line is in the string
             // lexer state remains the same
+            setCurrentBlockState(previousBlockState_);
             return;
-        }else
-            inString = false;
+        }
     }
 
     t = lex.nextToken();

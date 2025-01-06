@@ -25,7 +25,7 @@ The following precompiled versions are available at this time:
 
 Just download and unpack the compressed file to a directory. Start the application by double clicking on the InterlispNavigator executable. 
 
-Here is a copy of the [Fugue.2 sources](http://software.rochus-keller.ch/interlisp-fugue-2-sources.zip) for convenience.
+Here is a copy of the (fixed) [Fugue.2 sources](http://software.rochus-keller.ch/interlisp-fugue-2-sources.zip) for convenience.
 
 ### Build Steps
 

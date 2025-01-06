@@ -43,6 +43,7 @@ static const char* DEFINEQ;
 static const char* QUOTE;
 static const char* PUTPROPS;
 static const char* PUTPROP;
+static const char* SET;
 static const char* SETQ;
 static const char* SETQQ;
 static const char* RPAQ;
@@ -66,6 +67,7 @@ bool Reader::read(QIODevice* in, const QString& path)
     QUOTE = Token::getSymbol("QUOTE").constData();
     PUTPROPS = Token::getSymbol("PUTPROPS").constData();
     PUTPROP = Token::getSymbol("PUTPROP").constData();
+    SET = Token::getSymbol("SET").constData();
     SETQ = Token::getSymbol("SETQ").constData();
     SETQQ = Token::getSymbol("SETQQ").constData();
     RPAQ = Token::getSymbol("RPAQ").constData();
@@ -204,7 +206,8 @@ Reader::Object Reader::list(Lexer& in, bool brack, List* outer)
                     r = Ref::Decl;
             }else if( l->list.size() == 2 &&
                       (l->list.first().getAtom() == PUTPROP ||
-                       l->list.first().getAtom() == PUTPROPS || l->list.first().getAtom() == SETQ ||
+                       l->list.first().getAtom() == PUTPROPS ||
+                       l->list.first().getAtom() == SET || l->list.first().getAtom() == SETQ ||
                        l->list.first().getAtom() == SETQQ || l->list.first().getAtom() == RPAQ ||
                        l->list.first().getAtom() == RPAQQ ) )
             {

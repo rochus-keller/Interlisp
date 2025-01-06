@@ -510,7 +510,7 @@ Token Lexer::string()
     while( true )
     {
         c = readc();
-        if( c == '%' )
+        if( c == '%' ) // QUOTE has no influence here, see MACHINEINDEPENDENT line 1327
         {
             extra++;
             c = readc(); // escape
