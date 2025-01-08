@@ -126,7 +126,7 @@ public:
     struct Ref
     {
         RowCol pos;
-        enum Role { Use, Call, Decl, Lhs };
+        enum Role { Use, Call, Func, Param, Local, Lhs };
         quint8 role;
         quint16 len;
         Ref(const RowCol& rc = RowCol(), quint16 l = 0, Role r = Use):pos(rc),role(r),len(l){}
@@ -144,8 +144,9 @@ public:
     const Atoms& getAtoms() const { return atoms; }
 
 private:
-    Object next(Lexer&, List* outer, bool inQuote);
-    Object list(Lexer& in, bool brack, List* outer);
+    enum Hint { None, Quoted, Local, Param };
+    Object next(Lexer&, List* outer, Hint hint = None);
+    Object list(Lexer& in, bool brack, List* outer, Hint outerHint);
     void report(const Token&);
     void report(const Token&, const QString&);
 

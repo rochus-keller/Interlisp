@@ -344,6 +344,9 @@ Navigator::Navigator(QWidget *parent)
 
     new Gui::AutoShortcut( tr("ALT+Left"), this, this, SLOT(handleGoBack()) );
     new Gui::AutoShortcut( tr("ALT+Right"), this, this, SLOT(handleGoForward()) );
+    new Gui::AutoShortcut( tr("CTRL+F"), this, viewer, SLOT(handleFind()) );
+    new Gui::AutoShortcut( tr("F3"), this, viewer, SLOT(handleFindAgain()) );
+    new Gui::AutoShortcut( tr("CTRL+G"), this, viewer, SLOT(handleGoto()) );
     new QShortcut(tr("CTRL+SHIFT+F"),this,SLOT(onSearchAtom()));
     new QShortcut(tr("CTRL+SHIFT+A"),this,SLOT(onSelectAtom()));
     new QShortcut(tr("CTRL+O"),this,SLOT(onOpen()) );
@@ -445,6 +448,7 @@ void Navigator::load(const QString& path)
     tree->clear();
     title->clear();
     viewer->clear();
+    viewer->d_list = 0;
     asts.clear();
     xref.clear();
     atoms.clear();
@@ -707,6 +711,7 @@ void Navigator::pushLocation(const Navigator::Location& loc)
 void Navigator::showFile(const QString& file)
 {
     QFile f(file);
+    viewer->d_list = 0;
     if( !f.open(QIODevice::ReadOnly) )
     {
         viewer->setPlainText(tr("; cannot open file %1").arg(f.fileName()));
@@ -867,8 +872,12 @@ static inline QString roleToStr(quint8 r)
     {
     case Lisp::Reader::Ref::Call:
         return "call";
-    case Lisp::Reader::Ref::Decl:
-        return "decl";
+    case Lisp::Reader::Ref::Func:
+        return "func";
+    case Lisp::Reader::Ref::Local:
+        return "local";
+    case Lisp::Reader::Ref::Param:
+        return "param";
     case Lisp::Reader::Ref::Lhs:
         return "lhs";
     default:
@@ -936,6 +945,8 @@ void Navigator::fillProperties(const char* atom)
         Lisp::Reader::Properties::const_iterator j;
         for(j = i.value().props.begin(); j != i.value().props.end(); ++j )
         {
+            if( j.key() )
+                continue;
             QTreeWidgetItem* item = new QTreeWidgetItem(properties);
             item->setText(0, decode(j.key()));
             item->setData(0, Qt::UserRole, QVariant::fromValue(toBa(j.key())));
@@ -1026,7 +1037,7 @@ int main(int argc, char *argv[])
     a.setOrganizationName("me@rochus-keller.ch");
     a.setOrganizationDomain("github.com/rochus-keller/Interlisp");
     a.setApplicationName("InterlispNavigator");
-    a.setApplicationVersion("0.3.6");
+    a.setApplicationVersion("0.3.7");
     a.setStyle("Fusion");
 
     QFontDatabase::addApplicationFont(":/fonts/DejaVuSansMono.ttf");

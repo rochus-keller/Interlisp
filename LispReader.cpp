@@ -48,6 +48,9 @@ static const char* SETQ;
 static const char* SETQQ;
 static const char* RPAQ;
 static const char* RPAQQ;
+static const char* PROG;
+static const char* LAMBDA;
+static const char* NLAMBDA;
 
 
 Reader::Reader()
@@ -72,6 +75,9 @@ bool Reader::read(QIODevice* in, const QString& path)
     SETQQ = Token::getSymbol("SETQQ").constData();
     RPAQ = Token::getSymbol("RPAQ").constData();
     RPAQQ = Token::getSymbol("RPAQQ").constData();
+    PROG = Token::getSymbol("PROG").constData();
+    LAMBDA = Token::getSymbol("LAMBDA").constData();
+    NLAMBDA = Token::getSymbol("NLAMBDA").constData();
 
     Lexer lex;
     lex.setStream(in, path);
@@ -80,7 +86,7 @@ bool Reader::read(QIODevice* in, const QString& path)
     {
         const Token t = lex.nextToken();
         lex.unget(t);
-        Object res = next(lex, l, false);
+        Object res = next(lex, l);
         if( !error.isEmpty() )
             return false;
         if( res.type() != Object::Nil_ )
@@ -101,13 +107,13 @@ bool Reader::read(QIODevice* in, const QString& path)
     return error.isEmpty();
 }
 
-Reader::Object Reader::next(Lexer& in, List* outer, bool inQuote)
+Reader::Object Reader::next(Lexer& in, List* outer, Hint hint)
 {
     Object res;
-    if( inQuote )
+    if( hint == Quoted )
         in.startQuote();
     Token t = in.nextToken();
-    if( inQuote )
+    if( hint == Quoted )
         in.endQuote();
     if( t.isEof() )
         return Object();
@@ -136,7 +142,7 @@ Reader::Object Reader::next(Lexer& in, List* outer, bool inQuote)
         break;
     case Tok_lpar:
     case Tok_lbrack:
-        res = list(in, t.type == Tok_lbrack, outer);
+        res = list(in, t.type == Tok_lbrack, outer, hint);
         break;
     case Tok_rpar:
         report(t, QString("unexpected token ')'"));
@@ -150,12 +156,12 @@ Reader::Object Reader::next(Lexer& in, List* outer, bool inQuote)
     return res;
 }
 
-Reader::Object Reader::list(Lexer& in, bool brack, List* outer)
+Reader::Object Reader::list(Lexer& in, bool brack, List* outer, Hint outerHint)
 {
     List* l = new List();
     l->outer = outer;
     Object res(l);
-    bool quoteList = false;
+    Hint hint = None;
 
     while( true )
     {
@@ -184,7 +190,7 @@ Reader::Object Reader::list(Lexer& in, bool brack, List* outer)
             break;
         }
         in.unget(t);
-        Object res = next(in, l, quoteList);
+        Object res = next(in, l, hint);
         if( !error.isEmpty() )
         {
             res = Object();
@@ -194,17 +200,26 @@ Reader::Object Reader::list(Lexer& in, bool brack, List* outer)
         l->elementPositions.append(t.pos);
         if( res.type() == Object::Atom_ )
         {
-            if( l->list.size() == 1 && res.getAtom() == QUOTE )
-                quoteList = true;
-
-            Ref::Role r = Ref::Use;
             if( l->list.size() == 1 )
+            {
+                const char* atom = res.getAtom();
+                if( atom == QUOTE )
+                    hint = Quoted;
+                else if( atom == PROG )
+                    hint = Local;
+                else if( atom == LAMBDA || atom == NLAMBDA )
+                    hint = Param;
+            }
+
+            const bool isDecl = outerHint == Local || outerHint == Param;
+            Ref::Role r = outerHint == Local ? Ref::Local : ( outerHint == Param ? Ref::Param : Ref::Use);
+            if( !isDecl && l->list.size() == 1 )
             {
                 r = Ref::Call;
                 Object o = l->getOuterFirst();
                 if( o.type() == Object::Atom_ && o.getAtom() == DEFINEQ )
-                    r = Ref::Decl;
-            }else if( l->list.size() == 2 &&
+                    r = Ref::Func;
+            }else if( !isDecl && l->list.size() == 2 &&
                       (l->list.first().getAtom() == PUTPROP ||
                        l->list.first().getAtom() == PUTPROPS ||
                        l->list.first().getAtom() == SET || l->list.first().getAtom() == SETQ ||
@@ -223,7 +238,6 @@ Reader::Object Reader::list(Lexer& in, bool brack, List* outer)
         {
             atoms[l->list[1].getAtom()].props[l->list[l->list.size()-2].getAtom()] = res;
         }
-
     }
     return res;
 }
@@ -349,7 +363,7 @@ Reader::String* Reader::Object::getStr() const
 const char*Reader::Object::getAtom() const
 {
     if( type() != Atom_)
-        return 0;
+        return "";
     const char* res = (const char*)(bits & pointer_mask);
     return res;
 }
