@@ -945,7 +945,7 @@ void Navigator::fillProperties(const char* atom)
         Lisp::Reader::Properties::const_iterator j;
         for(j = i.value().props.begin(); j != i.value().props.end(); ++j )
         {
-            if( j.key() )
+            if( j.key() == 0 )
                 continue;
             QTreeWidgetItem* item = new QTreeWidgetItem(properties);
             item->setText(0, decode(j.key()));
@@ -1037,7 +1037,7 @@ int main(int argc, char *argv[])
     a.setOrganizationName("me@rochus-keller.ch");
     a.setOrganizationDomain("github.com/rochus-keller/Interlisp");
     a.setApplicationName("InterlispNavigator");
-    a.setApplicationVersion("0.3.7");
+    a.setApplicationVersion("0.3.8");
     a.setStyle("Fusion");
 
     QFontDatabase::addApplicationFont(":/fonts/DejaVuSansMono.ttf");
