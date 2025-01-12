@@ -99,8 +99,15 @@ char Lexer::readc()
     if( in && !in->atEnd() && in->getChar(&res) )
     {
         if( res == '\r' )
-            res = '\n'; // immediatedly convert to \n
-        else if( res == 0 || (!isprint(res) && !isspace(res)) )
+        {
+            char c;
+            in->getChar(&c);
+            in->ungetChar(c);
+            if( c == '\n' )
+                res = ' ';
+            else
+                res = '\n'; // immediatedly convert to \n
+        }else if( res == 0 || (!isprint(res) && !isspace(res)) )
         {
             if( last == '%' )
                 return ' '; // TODO: we need another solution, maybe (CHARACTER res); TODO: sync with Navigator::decode
@@ -138,8 +145,9 @@ void Lexer::ungetc(char c)
     {
         if( c == '\n' )
             c = ' ';
-        Q_ASSERT( pos.col != 0 );
-        pos.col--;
+        //Q_ASSERT( pos.col != 0 );
+        if( pos.col != 0 )
+            pos.col--;
         in->ungetChar(c);
     }
 }
@@ -602,23 +610,11 @@ void Lexer::skipWhiteSpace()
         {
             if( c == 0x06 )
                 readc(); // skip next
-#if 0
-            else if( !isspace(c) )
-                qDebug() << "*** special char in" << QFileInfo(sourcePath).baseName() <<
-                            pos.row << pos.col << ": " << quint8(c); // TEST
-#endif
             c = readc();
             if( c == 0 )
                 return;
         }
-#if 0
-        if( c != ';' )
-            break;
-        while( c != '\n' && c != '\r' && c != 0 )
-            c = readc();
-#else
         break;
-#endif
     }
     ungetc(c);
 }

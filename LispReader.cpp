@@ -233,10 +233,12 @@ Reader::Object Reader::list(Lexer& in, bool brack, List* outer, Hint outerHint)
         if( l->list.size() == 4 && (l->list[0].getAtom() == PUTPROPS || l->list[0].getAtom() == PUTPROP) )
         {
             //qDebug() << "Property of atom" << l->list[1].getAtom() << ":" << l->list[2].toString() << "=" << res.toString();
-            atoms[l->list[1].getAtom()].props[l->list[2].getAtom()] = res;
+            if( l->list[1].type() == Object::Atom_ && l->list[2].type() == Object::Atom_ )
+                atoms[l->list[1].getAtom()].props[l->list[2].getAtom()] = res;
         }else if( l->list.size() >= 6 && l->list.size() % 2 == 0 && l->list[0].getAtom() == PUTPROPS )
         {
-            atoms[l->list[1].getAtom()].props[l->list[l->list.size()-2].getAtom()] = res;
+            if( l->list[1].type() == Object::Atom_ && l->list[l->list.size()-2].type() == Object::Atom_ )
+                atoms[l->list[1].getAtom()].props[l->list[l->list.size()-2].getAtom()] = res;
         }
     }
     return res;

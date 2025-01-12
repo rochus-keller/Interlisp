@@ -370,12 +370,17 @@ static inline QString debang( const QString& str )
 static QString decode(const QByteArray& source)
 {
     QByteArray bytes;
-    for( int i = 0; i < source.size(); i++ )
+    const int len = source.size();
+    for( int i = 0; i < len; i++ )
     {
         const char ch = source[i];
         if( ch == '\r' )
-            bytes += '\n';
-        else if( ch == '_' )
+        {
+            if( i >= len-1 || source[i+1] != '\n' )
+                bytes += '\n';
+            else
+                bytes += ' ';
+        }else if( ch == '_' )
             bytes += "←";
         else if( ch == '^' )
             bytes += "↑";
@@ -414,13 +419,14 @@ static QStringList collectFiles( const QDir& dir )
         QFileInfo info(a);
         if( !hasCompiled )
         {
-            if( info.suffix() == "dump" )
+            const QString suff = debang(info.suffix().toLower());
+            if( suff == "dump" || suff == "lcom" || suff == "dfasl" || suff == "dcom" )
                 continue;
             QFile f(dir.absoluteFilePath(a));
             if( f.open(QIODevice::ReadOnly) )
             {
                 const QString header = decode(f.read(20));
-                if( header.startsWith("(FILECREATED") )
+                if( header.startsWith("(FILECREATED") || header.startsWith("(DEFINE-FILE-INFO") )
                     res.append(f.fileName());
                 else
                     qDebug() << "no source file" << f.fileName();
@@ -672,8 +678,8 @@ void Navigator::onRunParser()
             if( file.open(QFile::WriteOnly) )
             {
                 in.reset();
-                QByteArray code = decode(in.readAll());
-                file.write( code );
+                QString code = decode(in.readAll());
+                file.write( code.toUtf8() );
             }
 #endif
         }
@@ -1037,7 +1043,7 @@ int main(int argc, char *argv[])
     a.setOrganizationName("me@rochus-keller.ch");
     a.setOrganizationDomain("github.com/rochus-keller/Interlisp");
     a.setApplicationName("InterlispNavigator");
-    a.setApplicationVersion("0.3.8");
+    a.setApplicationVersion("0.3.9");
     a.setStyle("Fusion");
 
     QFontDatabase::addApplicationFont(":/fonts/DejaVuSansMono.ttf");
